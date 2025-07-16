@@ -1,0 +1,27 @@
+{
+  "name": "multicore-writer-app",
+  "main": "index.js",
+  "pear": {
+    "name": "multicore-writer-app",
+    "type": "terminal"
+  },
+  "type": "module",
+  "license": "Apache-2.0",
+  "scripts": {
+    "dev": "pear run -d .",
+    "test": "brittle test/*.test.js"
+  },
+  "devDependencies": {
+    "brittle": "^3.0.0",
+    "pear-interface": "^1.0.0"
+  },
+  "dependencies": {
+    "autobase": "^7.14.0",
+    "b4a": "^1.6.7",
+    "bare-process": "^4.2.1",
+    "corestore": "^7.4.5",
+    "hyperbee": "^2.24.3",
+    "hyperswarm": "^4.12.1",
+    "paparam": "^1.8.5"
+  }
+}
