@@ -6,13 +6,15 @@ import Hyperbee from 'hyperbee'
 import Hyperswarm from 'hyperswarm'
 
 
+// 保存实例的文件名
 const storage = Pear.config.args[0]
+// 远程实例的base key
 const remoteKey = Pear.config.args[1] || null
+
 const store = new Corestore(`./${storage || 'store1'}`)
 const base = new Autobase(store, remoteKey, { apply, open, optimistic: true })
 await base.ready()
 await base.update()
-
 
 const swarm = new Hyperswarm({ keyPair: base.local.keyPair })
 swarm.on('connection', async (conn) => {
@@ -20,6 +22,7 @@ swarm.on('connection', async (conn) => {
     console.log('🌐 Swarm 加入成功')
 })
 swarm.join(base.discoveryKey)
+await swarm.flush()
 
 // create the view
 function open(store) {

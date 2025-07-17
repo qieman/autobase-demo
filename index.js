@@ -6,38 +6,49 @@ import Hyperbee from 'hyperbee'
 import Hyperswarm from 'hyperswarm'
 
 
+// 保存实例的文件名
 const storage = Pear.config.args[0]
+// 远程实例的base key
 const remoteKey = Pear.config.args[1] || null
+
 const store = new Corestore(`./${storage || 'store1'}`)
-const base = new Autobase(store, remoteKey, { apply, open, optimistic: true })
+const base = new Autobase(store, remoteKey, { apply, open, optimistic: true, valueEncoding: 'json' })
 await base.ready()
 await base.update()
 
+const bee = new Hyperbee(store.get({ name: 'users' }), { keyEncoding: 'utf-8', valueEncoding: 'json' })
+
+
 const swarm = new Hyperswarm({ keyPair: base.local.keyPair })
 swarm.on('connection', async (conn) => {
-    await base.view.replicate(conn)
+    await base.replicate(conn)
     console.log('🌐 Swarm 加入成功')
 })
 swarm.join(base.discoveryKey)
+await swarm.flush()
 
 // create the view
 function open(store) {
-    return new Hyperbee(store.get("users"),
-        { keyEncoding: 'utf-8', valueEncoding: 'json' })
+    return store.get("all")
 }
 
 // use apply to handle to updates
 async function apply(nodes, view, host) {
     console.log('[nodes.length]:', nodes.length)
     for (const node of nodes) {
+        console.log('[node]:', node)
         const { value } = node
-        if (value.addWriter) {
-            await host.addWriter(value.addWriter, { indexer: true })
-            continue
-        }
+        // if (value.addWriter) {
+        //     await host.addWriter(value.addWriter, { indexer: true })
+        //     continue
+        // }
 
+        console.log('[value]:', value)
         await host.ackWriter(node.from.key)
-        await view.put(value.key, value)
+        await view.append(value)
+        if (value.type === 'register') {
+            await bee.put(value.data.id, value.data)
+        }
     }
 }
 
@@ -70,12 +81,19 @@ process.stdin.on('data', async (data) => {
 })
 
 async function list() {
-    console.log('\n📊 用户列表:')
+    console.log('\n📊 base view 用户列表:')
+    console.log('-'.repeat(30))
+    for (let i = 0; i < base.view.length; i++) {
+        console.log((await base.view.get(i)).toString())
+    }
+    console.log('总数:', base.view.length)
+    console.log('-'.repeat(30))
+    console.log('\n📊 bee 用户列表:')
     console.log('-'.repeat(30))
     let count = 0
-    for await (const entry of base.view.createReadStream()) {
+    for await (const entry of bee.createReadStream()) {
         count++
-        console.log(count, entry)
+        console.log(entry)
     }
     console.log('总数:', count)
     console.log('-'.repeat(30))
@@ -93,17 +111,14 @@ async function addWriter(message) {
 async function register(message) {
     const data = message.replace('/register', '').trim()
     if (data) {
-        const newKey = b4a.toString(base.key, 'hex')
-        const user = await base.view.get(newKey)
-        if (user) {
-            console.log('❌ 用户已存在', user)
-            return
-        }
-
         await base.append({
-            nickname: data,
-            key: newKey,
-            avatar: 'https://app.sola.day/images/default_avatar/avatar_0.png'
+            type: 'register',
+            data: {
+                handle: data,
+                nickname: '',
+                id: b4a.toString(base.key, 'hex'),
+                image_url: 'https://app.sola.day/images/default_avatar/avatar_0.png'
+            }
         }, { optimistic: true })
         await base.update()
         console.log(`✅ 数据已添加: "${data}"`)
