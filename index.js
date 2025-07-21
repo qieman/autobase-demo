@@ -34,9 +34,7 @@ function open(store) {
 
 // use apply to handle to updates
 async function apply(nodes, view, host) {
-    console.log('[nodes.length]:', nodes.length)
     for (const node of nodes) {
-        console.log('[node]:', node)
         const { value } = node
         // if (value.addWriter) {
         //     await host.addWriter(value.addWriter, { indexer: true })
@@ -45,9 +43,10 @@ async function apply(nodes, view, host) {
 
         console.log('[value]:', value)
         await host.ackWriter(node.from.key)
-        await view.append(value)
+        await view.append(JSON.stringify(value))
         if (value.type === 'register') {
-            await bee.put(value.data.id, value.data)
+            await bee.put(`user_by_id:${value.data.id}`, value.data)
+            await bee.put(`user_by_handle:${value.data.handle}`, value.data)
         }
     }
 }
@@ -77,6 +76,8 @@ process.stdin.on('data', async (data) => {
         console.log('[writable]:', base.writable)
     } else if (message.startsWith('/key')) {
         await add(message)
+    } else if (message.startsWith('/clear')) {
+        clearAll()
     }
 })
 
@@ -116,8 +117,9 @@ async function register(message) {
             data: {
                 handle: data,
                 nickname: '',
-                id: b4a.toString(base.key, 'hex'),
-                image_url: 'https://app.sola.day/images/default_avatar/avatar_0.png'
+                id: b4a.toString(base.local.key, 'hex'),
+                image_url: 'https://app.sola.day/images/default_avatar/avatar_0.png',
+                created_at: Date.now(),
             }
         }, { optimistic: true })
         await base.update()
@@ -132,5 +134,14 @@ function help() {
     console.log('/add-writer <身份公钥> - 添加写入者')
     console.log('/help     - 显示此帮助信息')
     console.log('/writable - 查看是否可写')
+    console.log('/clear - 清除所有数据')
     console.log('/quit     - 退出应用程序')
 }
+
+function clearAll() {
+    console.log('清除所有数据...')
+    console.log(base.view)
+    base.view.clear(0, base.view.length)
+    console.log('所有数据已清除')
+}
+
