@@ -12,44 +12,42 @@ const storage = Pear.config.args[0]
 const remoteKey = Pear.config.args[1] || null
 
 const store = new Corestore(`./${storage || 'store1'}`)
-const base = new Autobase(store, remoteKey, { apply, open, optimistic: true, valueEncoding: 'json' })
+const base = new Autobase(store, remoteKey, { apply, open, optimistic: true, valueEncoding: 'json', ackInterval: 500 })
 await base.ready()
 await base.update()
 
 const bee = new Hyperbee(store.get({ name: 'users' }), { keyEncoding: 'utf-8', valueEncoding: 'json' })
-
 
 const swarm = new Hyperswarm({ keyPair: base.local.keyPair })
 swarm.on('connection', async (conn) => {
     await base.replicate(conn)
     console.log('🌐 Swarm 加入成功')
 })
-swarm.join(base.discoveryKey)
+swarm.join(base.discoveryKey, { server: true, client: true })
 await swarm.flush()
 
 // create the view
 function open(store) {
+    console.log('[hypercore]: open')
     return store.get("all")
 }
 
 // use apply to handle to updates
 async function apply(nodes, view, host) {
+    console.log('[hypercore]: applying')
     for (const node of nodes) {
         const { value } = node
-        // if (value.addWriter) {
-        //     await host.addWriter(value.addWriter, { indexer: true })
-        //     continue
-        // }
-
-        console.log('[value]:', value)
         await host.ackWriter(node.from.key)
         await view.append(JSON.stringify(value))
+        console.log('[value]:', value)
         if (value.type === 'register') {
             await bee.put(`user_by_id:${value.data.id}`, value.data)
             await bee.put(`user_by_handle:${value.data.handle}`, value.data)
         }
     }
 }
+
+base.on(error => console.error('[hypercore]: error', error))
 
 console.log('\n' + '-'.repeat(50))
 console.log('[Base Key]:', b4a.toString(base.key, 'hex'))
@@ -76,6 +74,8 @@ process.stdin.on('data', async (data) => {
         console.log('[writable]:', base.writable)
     } else if (message.startsWith('/key')) {
         await add(message)
+    } else if (message.startsWith('/ping')) {
+        ping()
     } else if (message.startsWith('/clear')) {
         clearAll()
     }
@@ -98,6 +98,10 @@ async function list() {
     }
     console.log('总数:', count)
     console.log('-'.repeat(30))
+}
+
+async function ping() {
+    await base.append({type: 'ping', data: {time: new Date().toISOString(), user: b4a.toString(base.local.key, 'hex')}}, { optimistic: true })
 }
 
 async function addWriter(message) {
@@ -135,6 +139,7 @@ function help() {
     console.log('/help     - 显示此帮助信息')
     console.log('/writable - 查看是否可写')
     console.log('/clear - 清除所有数据')
+    console.log('/ping - 测试连接')
     console.log('/quit     - 退出应用程序')
 }
 
